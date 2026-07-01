@@ -133,9 +133,9 @@ def main() -> int:
     args = build_arg_parser().parse_args()
     input_dir: Path = args.input_dir
 
-    if not input_dir.exists() or not input_dir.is_dir():
-        print(f"Input directory does not exist or is not a directory: {input_dir}")
-        return 2
+    if not input_dir.exists():
+        input_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Created input directory: {input_dir}")
 
     records = collect_records(input_dir)
     if not records:

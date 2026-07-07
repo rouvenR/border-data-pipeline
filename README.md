@@ -1,42 +1,28 @@
+# Root Project
+This project is part of the broader BORDER extension project. Refer to the [Orchestration Project](https://github.com/rouvenR/BORDER-grid5k-orchestration) for more context.
+
 # Docs
-This project contains python scripts to prepare and postprocess experiments with the TODO (link to main project) framework.
+This project contains python scripts to prepare and postprocess experiments with the extended BORDER framework.
 
 ## Before experiments
 `categorial_latin_hypercube_sampling.py`: Samples configurations with a wide spread for randomised experiments.
 
 ```bash
-python3 categorial_latin_hypercube_sampling.py \
-	--samples 32 \
-	--message_size_qos0 10,100,1000 \
-	--number_of_clients_qos0 10,20,50 \
-	--delay_qos0 0ms,10ms \
-	--number_of_messages_qos0 100,1000 \
-	--message_size_qos1 10,100,1000 \
-	--number_of_clients_qos1 10,20,50 \
-	--delay_qos1 0ms,10ms \
-	--number_of_messages_qos1 100,1000 \
-	--message_size_qos2 10,100,1000 \
-	--number_of_clients_qos2 10,20,50 \
-	--delay_qos2 0ms,10ms \
-	--number_of_messages_qos2 100,1000 \
-	--seed 42 \
-	--output inputs/training_data/lhs_samples.csv
+python3 categorial_latin_hypercube_sampling.py --samples 50 --clients_qos0 "50,100,150" --throughput_qos0 "100,4375,8750,13125,17500" --size_qos0 "100,250,500,750,1000" --clients_qos1 "50,100,150" --throughput_qos1 "100,4375,8750,13125,17500" --size_qos1 "100,250,500,750,1000" --clients_qos2 "50,100,150" --throughput_qos2 "100,1250,2500,3750,5000" --size_qos2 "100,250,500,750,1000" --cpu "2,4,8,16"
 ```
 
 Parameters:
 - `--samples` (required): Number of samples to generate.
-- `--message_size_qos0` (required): Comma-separated category values for QoS 0 message size.
-- `--number_of_clients_qos0` (required): Comma-separated category values for QoS 0 client count.
-- `--delay_qos0` (required): Comma-separated category values for QoS 0 delay.
-- `--number_of_messages_qos0` (required): Comma-separated category values for QoS 0 message count.
-- `--message_size_qos1` (required): Comma-separated category values for QoS 1 message size.
-- `--number_of_clients_qos1` (required): Comma-separated category values for QoS 1 client count.
-- `--delay_qos1` (required): Comma-separated category values for QoS 1 delay.
-- `--number_of_messages_qos1` (required): Comma-separated category values for QoS 1 message count.
-- `--message_size_qos2` (required): Comma-separated category values for QoS 2 message size.
-- `--number_of_clients_qos2` (required): Comma-separated category values for QoS 2 client count.
-- `--delay_qos2` (required): Comma-separated category values for QoS 2 delay.
-- `--number_of_messages_qos2` (required): Comma-separated category values for QoS 2 message count.
+- `--clients_qos0` (required): Comma-separated category values for QoS 0 client count.
+- `--throughput_qos0` (required): Comma-separated category values for QoS 0 target throughput.
+- `--size_qos0` (required): Comma-separated category values for QoS 0 message size.
+- `--clients_qos1` (required): Comma-separated category values for QoS 1 client count.
+- `--throughput_qos1` (required): Comma-separated category values for QoS 1 target throughput.
+- `--size_qos1` (required): Comma-separated category values for QoS 1 message size.
+- `--clients_qos2` (required): Comma-separated category values for QoS 2 client count.
+- `--throughput_qos2` (required): Comma-separated category values for QoS 2 target throughput.
+- `--size_qos2` (required): Comma-separated category values for QoS 2 message size.
+- `--cpu` (required): Comma-separated category values for CPU core allocation.
 - `--seed` (optional): Random seed for reproducible sampling.
 - `--output` (optional): Output CSV path. If omitted, samples are printed to stdout.
 
@@ -70,7 +56,7 @@ Parameters:
 ```bash
 python3 compute_throughput_metrics.py \
 	--timestamp 20260512145503 \
-	--broker-name rabbitmq
+	--broker-name jorammq
 ```
 
 Parameters:

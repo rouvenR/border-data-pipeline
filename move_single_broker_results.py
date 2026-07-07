@@ -21,7 +21,8 @@ def main() -> None:
     target_root = (script_dir / "inputs" / "result_data").resolve()
 
     if not source_root.exists():
-        raise FileNotFoundError(f"Source directory does not exist: {source_root}")
+        print(f"Source directory does not exist: {source_root}. When running locally, this may be expected.")
+        return
 
     target_root.mkdir(parents=True, exist_ok=True)
 

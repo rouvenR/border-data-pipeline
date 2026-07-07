@@ -18,14 +18,6 @@ CPU_TRANSLATION = {
     "16": 0.58,
 }
 
-# Low Load
-# CPU_TRANSLATION = {
-#     "2": 1.0,
-#     "4": 1.31,
-#     "8": 0.95,
-#     "16": 0.5,
-# }
-
 RAM_TRANSLATION = {
     "0.5": 1.5,
     "1": 1.0,
@@ -59,8 +51,6 @@ def _is_message_size_factor_component(component: RegressionComponent) -> bool:
 
 def _evaluate_component_raw(
     component: RegressionComponent,
-    cpu: float,
-    ram_gib: float,
     variable_value: float,
     baseline: float,
 ) -> float:
@@ -72,6 +62,7 @@ def _evaluate_component_raw(
         )
     )
     if is_saturated:
+        print(f"Component {component.model_path.name}: saturated")
         return component.saturation_value
 
     uses_static_segment = (
@@ -80,13 +71,13 @@ def _evaluate_component_raw(
         and variable_value <= component.static_cutoff
     )
     if uses_static_segment:
+        print(
+            f"Component {component.model_path.name}: static <= {component.static_cutoff}"
+        )
         return component.static_value - baseline
 
-    # TODO remove coef_cpu and coef_ram_gib (seem useless)
     regressed_value = (
         component.intercept
-        + component.coef_cpu * cpu
-        + component.coef_ram_gib * ram_gib
         + component.coef_variable * variable_value
         - baseline
     )
@@ -270,33 +261,16 @@ def _predict_total(
         factor_component = factor_components[0]
 
     total = 0.0
-    target_col = components[0].target_column
+    target_col = components[0].target_column # target is the same for all components (e.g. CPU utilisation)
     for component in active_components:
         print("\n")
         variable_value = variable_values[component.variable_column]
 
-        raw = _evaluate_component_raw(component, cpu, ram_gib, variable_value, baseline)
-        is_saturated = (
-            component.saturation_threshold is not None
-            and (
-                (component.saturation_side == "right" and variable_value >= component.saturation_threshold)
-                or (component.saturation_side == "left" and variable_value <= component.saturation_threshold)
-            )
-        )
-        if is_saturated:
-            print(f"Component {component.model_path.name}: raw={raw:.4f} (saturated)")
-        elif (
-            component.static_cutoff is not None
-            and component.static_value is not None
-            and variable_value <= component.static_cutoff
-        ):
-            print(
-                f"Component {component.model_path.name}: raw={raw:.4f} "
-                f"(static <= {component.static_cutoff})"
-            )
-        else:
-            print(f"Component {component.model_path.name}: raw={raw:.4f}")
+        raw = _evaluate_component_raw(component, variable_value, baseline)
 
+        print(f"Component {component.model_path.name}: raw={raw:.4f}")
+
+        # Multiplicative effect on throughput
         if "incoming_throughput" in component.variable_column.lower():
             factor_multiplier = 1.0
             if factor_component is not None:
@@ -369,12 +343,14 @@ def validate_against_csv(
             ram_val = _parse_ram_to_gib(row.get("ram", ""))
             actual = _parse_number(row.get(target_col, ""))
 
+            # Skip rows that do not contain the baseline resource values or target.
             if cpu_val is None or ram_val is None or actual is None:
                 skipped += 1
                 continue
 
             variable_values: Dict[str, float] = {}
             valid = True
+            # Every component variable must be present so the additive prediction is complete.
             for col in variable_cols:
                 val = _parse_number(row.get(col, ""))
                 if val is None:
@@ -382,6 +358,7 @@ def validate_against_csv(
                     break
                 variable_values[col] = val
 
+            # Partial rows are ignored instead of predicting from incomplete inputs.
             if not valid:
                 skipped += 1
                 continue

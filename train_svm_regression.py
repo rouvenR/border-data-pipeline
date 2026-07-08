@@ -2,7 +2,6 @@
 
 import argparse
 import csv
-import json
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -57,19 +56,7 @@ def parse_args() -> argparse.Namespace:
             "uses cross-validation on the training metrics file."
         ),
     )
-    parser.add_argument(
-        "--random-search-iterations",
-        type=int,
-        help=(
-            "Optional number of RandomizedSearchCV iterations for SVM hyperparameter "
-            "tuning across kernels. When omitted, the script uses the existing "
-            "linear-kernel grid search."
-        ),
-    )
-    args = parser.parse_args()
-    if args.random_search_iterations is not None and args.random_search_iterations < 1:
-        raise SystemExit("--random-search-iterations must be at least 1.")
-    return args
+    return parser.parse_args()
 
 
 def parse_number(value: str) -> Optional[float]:
@@ -231,13 +218,6 @@ def build_dataset(
     return x_rows, target_values, skipped_capacity_rows, skipped_missing_rows
 
 
-def get_linear_param_grid() -> Dict[str, List[float]]:
-    return {
-        "C": [0.1, 1.0, 10.0, 100.0],
-        "epsilon": [0.01, 0.1, 0.5, 1.0],
-    }
-
-
 def get_default_params_by_target(target: str) -> Dict[str, Any]:
     defaults: Dict[str, Dict[str, Any]] = {
         "received_throughput_mean": {
@@ -270,46 +250,12 @@ def get_default_params_by_target(target: str) -> Dict[str, Any]:
     return dict(defaults[target])
 
 
-def get_kernel_param_distributions() -> List[Dict[str, List[Any]]]:
-    return [
-        {
-            "kernel": ["linear"],
-            "C": [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0],
-            "epsilon": [0.001, 0.01, 0.1, 0.5, 1.0],
-        },
-        {
-            "kernel": ["rbf"],
-            "C": [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0],
-            "epsilon": [0.001, 0.01, 0.1, 0.5, 1.0],
-            "gamma": ["scale", "auto", 0.001, 0.01, 0.1, 1.0],
-        },
-        {
-            "kernel": ["poly"],
-            "C": [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0],
-            "epsilon": [0.001, 0.01, 0.1, 0.5, 1.0],
-            "gamma": ["scale", "auto", 0.001, 0.01, 0.1],
-            "degree": [2, 3, 4],
-            "coef0": [0.0, 0.5, 1.0],
-        },
-        {
-            "kernel": ["sigmoid"],
-            "C": [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0],
-            "epsilon": [0.001, 0.01, 0.1, 0.5, 1.0],
-            "gamma": ["scale", "auto", 0.001, 0.01, 0.1, 1.0],
-            "coef0": [0.0, 0.5, 1.0],
-        },
-    ]
-
-
-def train_svm_with_optional_random_search(
+def train_svm_with_defaults(
     x_rows_scaled: Any,
     y_values: List[float],
-    n_splits: int,
     target: str,
-    random_search_iterations: Optional[int],
-) -> Tuple[Any, Dict[str, Any], Optional[Dict[str, Any]]]:
+) -> Tuple[Any, Dict[str, Any]]:
     try:
-        from sklearn.model_selection import GridSearchCV, RandomizedSearchCV  # type: ignore
         from sklearn.svm import SVR  # type: ignore
     except ModuleNotFoundError as exc:
         raise SystemExit(
@@ -317,40 +263,10 @@ def train_svm_with_optional_random_search(
             "Install it in the active environment and rerun the script."
         ) from exc
 
-    if random_search_iterations is None:
-        default_params = get_default_params_by_target(target)
-        default_model = SVR(**default_params)
-        default_model.fit(x_rows_scaled, y_values)
-        return default_model, default_params, None
-
-    random_search = RandomizedSearchCV(
-        SVR(),
-        param_distributions=get_kernel_param_distributions(),
-        n_iter=random_search_iterations,
-        cv=n_splits,
-        scoring="neg_mean_absolute_error",
-        n_jobs=-1,
-        random_state=42,
-    )
-    random_search.fit(x_rows_scaled, y_values)
-
-    sampled_results: List[Tuple[float, Dict[str, Any]]] = []
-    mean_test_scores = list(random_search.cv_results_["mean_test_score"])
-    sampled_params = list(random_search.cv_results_["params"])
-    for mean_score, params in zip(mean_test_scores, sampled_params):
-        sampled_results.append((-float(mean_score), dict(params)))
-
-    best_sample = min(sampled_results, key=lambda item: item[0])
-    worst_sample = max(sampled_results, key=lambda item: item[0])
-    summary = {
-        "iterations": random_search_iterations,
-        "best_sample_mae": best_sample[0],
-        "best_sample_params": best_sample[1],
-        "worst_sample_mae": worst_sample[0],
-        "worst_sample_params": worst_sample[1],
-    }
-
-    return random_search.best_estimator_, dict(random_search.best_params_), summary
+    default_params = get_default_params_by_target(target)
+    default_model = SVR(**default_params)
+    default_model.fit(x_rows_scaled, y_values)
+    return default_model, default_params
 
 
 def _mape(y_true, y_pred) -> float:
@@ -369,7 +285,6 @@ def evaluate_target(
     x_rows: List[List[float]],
     y_values: List[float],
     target: str,
-    random_search_iterations: Optional[int],
 ) -> Dict[str, Any]:
     try:
         from sklearn.metrics import make_scorer, max_error  # type: ignore
@@ -392,12 +307,10 @@ def evaluate_target(
     scaler = StandardScaler()
     x_rows_scaled = scaler.fit_transform(x_rows)
 
-    best_model, best_params, random_search_summary = train_svm_with_optional_random_search(
+    best_model, best_params = train_svm_with_defaults(
         x_rows_scaled,
         y_values,
-        n_splits,
         target,
-        random_search_iterations,
     )
 
     splitter = KFold(n_splits=n_splits, shuffle=True, random_state=42)
@@ -440,7 +353,6 @@ def evaluate_target(
         "best_gamma": best_params.get("gamma"),
         "best_degree": best_params.get("degree"),
         "best_coef0": best_params.get("coef0"),
-        "random_search": random_search_summary,
     }
 
 
@@ -448,8 +360,7 @@ def fit_svm_model(
     x_rows: List[List[float]],
     y_values: List[float],
     target: str,
-    random_search_iterations: Optional[int],
-) -> Tuple[Any, Any, Dict[str, Any], Optional[Dict[str, Any]]]:
+) -> Tuple[Any, Any, Dict[str, Any]]:
     try:
         from sklearn.preprocessing import StandardScaler  # type: ignore
     except ModuleNotFoundError as exc:
@@ -463,14 +374,12 @@ def fit_svm_model(
 
     scaler = StandardScaler()
     x_rows_scaled = scaler.fit_transform(x_rows)
-    model, best_params, random_search_summary = train_svm_with_optional_random_search(
+    model, best_params = train_svm_with_defaults(
         x_rows_scaled,
         y_values,
-        min(5, len(x_rows)),
         target,
-        random_search_iterations,
     )
-    return scaler, model, best_params, random_search_summary
+    return scaler, model, best_params
 
 
 def evaluate_against_validation_set(
@@ -479,16 +388,14 @@ def evaluate_against_validation_set(
     validation_x_rows: List[List[float]],
     validation_y_values: List[float],
     target: str,
-    random_search_iterations: Optional[int],
 ) -> Dict[str, Any]:
     if len(validation_x_rows) < 1:
         raise SystemExit("Not enough matched rows to evaluate validation set (need at least 1 row).")
 
-    scaler, model, best_params, random_search_summary = fit_svm_model(
+    scaler, model, best_params = fit_svm_model(
         training_x_rows,
         training_y_values,
         target,
-        random_search_iterations,
     )
     validation_x_scaled = scaler.transform(validation_x_rows)
     predictions = model.predict(validation_x_scaled)
@@ -524,7 +431,6 @@ def evaluate_against_validation_set(
         "best_gamma": best_params.get("gamma"),
         "best_degree": best_params.get("degree"),
         "best_coef0": best_params.get("coef0"),
-        "random_search": random_search_summary,
     }
 
 
@@ -604,20 +510,17 @@ def main() -> None:
                 validation_x_rows,
                 validation_target_values[target],
                 target,
-                args.random_search_iterations,
             )
         else:
             target_reports[target] = evaluate_target(
                 x_rows,
                 target_values[target],
                 target,
-                args.random_search_iterations,
             )
 
     print(f"Metrics file: {metrics_path}")
     if args.validate_against:
         print(f"Validation metrics file: {args.validate_against}")
-    print(f"Random search iterations: {args.random_search_iterations}")
     print(f"Include capacity-limited rows: {args.include_capacity_limited}")
     print(f"Feature columns: {', '.join(FEATURE_COLUMNS)}")
     print(f"Target columns: {', '.join(TARGET_COLUMNS)}")
@@ -666,20 +569,6 @@ def main() -> None:
             print(f"    best_degree={report['best_degree']}")
         if report.get("best_coef0") is not None:
             print(f"    best_coef0={report['best_coef0']}")
-
-        random_search = report.get("random_search")
-        if random_search is not None:
-            print(f"    random_search_iterations={random_search['iterations']}")
-            print(
-                "    random_search_best_sample: "
-                f"MAE={random_search['best_sample_mae']:.6f}, "
-                f"params={json.dumps(random_search['best_sample_params'], sort_keys=True)}"
-            )
-            print(
-                "    random_search_worst_sample: "
-                f"MAE={random_search['worst_sample_mae']:.6f}, "
-                f"params={json.dumps(random_search['worst_sample_params'], sort_keys=True)}"
-            )
 
 
 if __name__ == "__main__":

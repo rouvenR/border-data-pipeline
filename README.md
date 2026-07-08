@@ -136,12 +136,10 @@ Parameters:
 ```bash
 python3 train_svm_regression.py \
 	--timestamp 20260512145503 \
-	--include-capacity-limited \
-	--random-search-iterations 100
+	--include-capacity-limited
 ```
 
 Parameters:
 - `--timestamp` (required): Timestamp used to locate `training_data/<TIMESTAMP>_metrics.csv`.
 - `--include-capacity-limited` (optional flag): Includes rows where CPU or RAM reached maximum capacity.
 - `--validate-against` (optional): Path to a second metrics CSV used as holdout validation. If omitted, the script uses cross-validation only.
-- `--random-search-iterations` (optional): Number of `RandomizedSearchCV` iterations for SVM hyperparameter tuning. Must be at least `1` when provided.

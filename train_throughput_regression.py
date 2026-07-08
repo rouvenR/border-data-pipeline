@@ -9,6 +9,14 @@ from typing import Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 
+from __helpers.metrics_common import (
+    parse_bool_flag,
+    parse_cpu,
+    parse_number,
+    parse_ram_to_gib,
+    split_run_tag,
+)
+
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_METRICS_DIR = BASE_DIR / "inputs" / "training_data"
 DEFAULT_PLOTS_DIR = BASE_DIR / "outputs" /  "plots" / "regressions"
@@ -79,86 +87,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def split_run_tag(run_tag: str) -> Tuple[str, str]:
-    if "__" in run_tag:
-        name, config = run_tag.split("__", 1)
-        return name, config
-    return "", run_tag
-
-
-def parse_number(value: str) -> Optional[float]:
-    if value is None:
-        return None
-    text = value.strip()
-    if not text:
-        return None
-
-    try:
-        return float(text)
-    except ValueError:
-        pass
-
-    match = re.match(r"^([0-9]+(?:\.[0-9]+)?)", text)
-    if match:
-        return float(match.group(1))
-    return None
-
-
-def parse_cpu(config: str, csv_value: str) -> Optional[float]:
-    csv_num = parse_number(csv_value)
-    if csv_num is not None:
-        return csv_num
-
-    for pattern in [r"(?:^|_)CPU([0-9]+(?:\.[0-9]+)?)(?:_|$)", r"(?:^|_)([0-9]+(?:\.[0-9]+)?)cpu(?:_|$)"]:
-        match = re.search(pattern, config, re.IGNORECASE)
-        if match:
-            return float(match.group(1))
-    return None
-
-
-def parse_ram_to_gib(config: str, csv_value: str) -> Optional[float]:
-    token = csv_value.strip() if csv_value else ""
-    if not token:
-        for pattern in [r"(?:^|_)RAM([^_]+)(?:_|$)", r"(?:^|_)([^_]+)ram(?:_|$)"]:
-            match = re.search(pattern, config, re.IGNORECASE)
-            if match:
-                token = match.group(1)
-                break
-
-    if not token:
-        return None
-
-    token = token.strip().lower()
-    match = re.match(r"^([0-9]+(?:\.[0-9]+)?)([a-z]*)$", token)
-    if not match:
-        return None
-
-    value = float(match.group(1))
-    unit = match.group(2)
-
-    factors_to_gib = {
-        "": 1.0,
-        "g": 1.0,
-        "gb": 1.0,
-        "gib": 1.0,
-        "gi": 1.0,
-        "m": 1.0 / 1024.0,
-        "mb": 1.0 / 1024.0,
-        "mib": 1.0 / 1024.0,
-        "mi": 1.0 / 1024.0,
-        "k": 1.0 / (1024.0 * 1024.0),
-        "kb": 1.0 / (1024.0 * 1024.0),
-        "kib": 1.0 / (1024.0 * 1024.0),
-        "ki": 1.0 / (1024.0 * 1024.0),
-        "b": 1.0 / (1024.0 * 1024.0 * 1024.0),
-    }
-
-    factor = factors_to_gib.get(unit)
-    if factor is None:
-        return None
-    return value * factor
-
-
 def resolve_target_column(target_name: str, row: Dict[str, str]) -> Optional[str]:
     aliases = {
         "received_throughput": "received_throughput_mean",
@@ -183,10 +111,6 @@ def load_rows(metrics_path: Path) -> List[Tuple[Path, Dict[str, str]]]:
             results.append((metrics_path, row))
 
     return results
-
-
-def parse_bool_flag(value: str) -> bool:
-    return value.strip().lower() == "true" if value else False
 
 
 def snake_to_title_case(s: str) -> str:

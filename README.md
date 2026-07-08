@@ -121,15 +121,13 @@ Parameters:
 ```bash
 python3 train_random_forest.py \
 	--timestamp 20260512145503 \
-	--validate-against inputs/training_data/20260512153000_metrics.csv \
-	--random-search-iterations 50
+	--validate-against inputs/training_data/20260512153000_metrics.csv
 ```
 
 Parameters:
 - `--timestamp` (required): Timestamp used to locate `training_data/<TIMESTAMP>_metrics.csv`.
 - `--include-capacity-limited` (optional flag): Includes rows where CPU or RAM reached maximum capacity.
 - `--validate-against` (optional): Path to a second metrics CSV used as holdout validation. If omitted, the script uses cross-validation only.
-- `--random-search-iterations` (optional): Number of `RandomizedSearchCV` iterations for tuning `n_estimators` and `max_features`.
 
 `train_svm_regression.py`: Based on a metrics file ("/inputs/training_data/\*_metrics.csv"), trains a support vector regression prediction model and applies cross-validation.
 

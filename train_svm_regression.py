@@ -435,6 +435,8 @@ def evaluate_against_validation_set(
 
 
 def main() -> None:
+    
+    # ==== INPUTS ====
     args = parse_args()
     metrics_path = DEFAULT_METRICS_DIR / f"{args.timestamp}_metrics.csv"
     if not metrics_path.exists():
@@ -451,7 +453,11 @@ def main() -> None:
         raise SystemExit(
             "Missing required columns in metrics CSV: " + ", ".join(sorted(missing_columns))
         )
+    # ==== END INPUTS ====
 
+
+
+    # ==== DATA PARSING ====
     x_rows, target_values, skipped_capacity_rows, skipped_missing_rows = build_dataset(
         rows,
         args.include_capacity_limited,
@@ -469,7 +475,10 @@ def main() -> None:
             "Results may be unreliable.".format(len(x_rows)),
             flush=True,
         )
+    # ==== END DATA PARSING ====
 
+
+    # ==== VALIDATION DATA INPUT & PARSING ====
     validation_rows: List[Dict[str, str]] = []
     validation_x_rows: List[List[float]] = []
     validation_target_values: Dict[str, List[float]] = {target: [] for target in TARGET_COLUMNS}
@@ -500,7 +509,11 @@ def main() -> None:
             validation_skipped_capacity_rows,
             validation_skipped_missing_rows,
         ) = build_dataset(validation_rows, args.include_capacity_limited)
+    # ==== END VALIDATION DATA INPUT & PARSING ====
 
+
+
+    # ==== MODEL FITTING & VALIDATION ====
     target_reports: Dict[str, Dict[str, Any]] = {}
     for target in TARGET_COLUMNS:
         if args.validate_against:
@@ -517,7 +530,11 @@ def main() -> None:
                 target_values[target],
                 target,
             )
+    # ==== END MODEL FITTING & VALIDATION ====
 
+
+
+    # ==== REPORTING ====
     print(f"Metrics file: {metrics_path}")
     if args.validate_against:
         print(f"Validation metrics file: {args.validate_against}")
@@ -569,6 +586,7 @@ def main() -> None:
             print(f"    best_degree={report['best_degree']}")
         if report.get("best_coef0") is not None:
             print(f"    best_coef0={report['best_coef0']}")
+    # ==== END REPORTING ====
 
 
 if __name__ == "__main__":

@@ -2,7 +2,6 @@
 
 import argparse
 import csv
-import json
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -55,15 +54,6 @@ def parse_args() -> argparse.Namespace:
             "Optional path to a second metrics CSV used as a holdout validation "
             "dataset for reporting MAE/RMSE/MaxError. When omitted, the script "
             "uses cross-validation on the training metrics file."
-        ),
-    )
-    parser.add_argument(
-        "--random-search-iterations",
-        type=int,
-        help=(
-            "Optional number of RandomizedSearchCV iterations used to tune only "
-            "n_estimators and max_features by minimizing cross-validated MAE. "
-            "When omitted, the script uses the default random forest settings."
         ),
     )
     return parser.parse_args()
@@ -243,12 +233,11 @@ def _mape(y_true, y_pred) -> float:
 def evaluate_target(
     x_rows: List[List[float]],
     y_values: List[float],
-    random_search_iterations: Optional[int] = None,
 ) -> Dict[str, object]:
     try:
         from sklearn.ensemble import RandomForestRegressor  # type: ignore
         from sklearn.metrics import make_scorer, max_error  # type: ignore
-        from sklearn.model_selection import KFold, RandomizedSearchCV, cross_validate  # type: ignore
+        from sklearn.model_selection import KFold, cross_validate  # type: ignore
     except ModuleNotFoundError as exc:
         raise SystemExit(
             "scikit-learn is required for train_random_forest.py. "
@@ -269,44 +258,8 @@ def evaluate_target(
     )
     splitter = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
-    tuned_model = base_model
-    search_summary: Optional[Dict[str, object]] = None
-    if random_search_iterations is not None:
-        if random_search_iterations < 1:
-            raise SystemExit("--random-search-iterations must be >= 1 when provided.")
-
-        search = RandomizedSearchCV(
-            estimator=base_model,
-            param_distributions={
-                "n_estimators": list(range(50, 1001)),
-                "max_features": ["sqrt", "log2", None, 0.3, 0.5, 0.7, 1.0],
-            },
-            n_iter=random_search_iterations,
-            scoring="neg_mean_absolute_error",
-            cv=splitter,
-            random_state=42,
-            n_jobs=-1,
-            refit=True,
-        )
-        search.fit(x_rows, y_values)
-        tuned_model = search.best_estimator_
-
-        ranked_results = []
-        for index in range(len(search.cv_results_["params"])):
-            ranked_results.append(
-                {
-                    "mae": -float(search.cv_results_["mean_test_score"][index]),
-                    "config": dict(search.cv_results_["params"][index]),
-                }
-            )
-        ranked_results.sort(key=lambda item: item["mae"])
-        search_summary = {
-            "best": ranked_results[0],
-            "worst": ranked_results[-1],
-        }
-
     scores = cross_validate(
-        tuned_model,
+        base_model,
         x_rows,
         y_values,
         cv=splitter,
@@ -339,19 +292,15 @@ def evaluate_target(
         "mape_min": min(mape_values),
         "mape_max": max(mape_values),
     }
-    if search_summary is not None:
-        report["random_search"] = search_summary
     return report
 
 
 def fit_random_forest(
     x_rows: List[List[float]],
     y_values: List[float],
-    random_search_iterations: Optional[int] = None,
 ):
     try:
         from sklearn.ensemble import RandomForestRegressor  # type: ignore
-        from sklearn.model_selection import KFold, RandomizedSearchCV  # type: ignore
     except ModuleNotFoundError as exc:
         raise SystemExit(
             "scikit-learn is required for train_random_forest.py. "
@@ -366,47 +315,8 @@ def fit_random_forest(
         random_state=42,
         n_jobs=-1,
     )
-    if random_search_iterations is None:
-        model.fit(x_rows, y_values)
-        return model, None
-
-    if random_search_iterations < 1:
-        raise SystemExit("--random-search-iterations must be >= 1 when provided.")
-
-    n_splits = min(5, len(x_rows))
-    if n_splits < 2:
-        raise SystemExit("Cross-validation requires at least 2 rows for random search.")
-
-    splitter = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-    search = RandomizedSearchCV(
-        estimator=model,
-        param_distributions={
-            "n_estimators": list(range(50, 1001)),
-            "max_features": ["sqrt", "log2", None, 0.3, 0.5, 0.7, 1.0],
-        },
-        n_iter=random_search_iterations,
-        scoring="neg_mean_absolute_error",
-        cv=splitter,
-        random_state=42,
-        n_jobs=-1,
-        refit=True,
-    )
-    search.fit(x_rows, y_values)
-
-    ranked_results = []
-    for index in range(len(search.cv_results_["params"])):
-        ranked_results.append(
-            {
-                "mae": -float(search.cv_results_["mean_test_score"][index]),
-                "config": dict(search.cv_results_["params"][index]),
-            }
-        )
-    ranked_results.sort(key=lambda item: item["mae"])
-    search_summary = {
-        "best": ranked_results[0],
-        "worst": ranked_results[-1],
-    }
-    return search.best_estimator_, search_summary
+    model.fit(x_rows, y_values)
+    return model
 
 
 def evaluate_against_validation_set(
@@ -414,15 +324,13 @@ def evaluate_against_validation_set(
     training_y_values: List[float],
     validation_x_rows: List[List[float]],
     validation_y_values: List[float],
-    random_search_iterations: Optional[int] = None,
 ) -> Dict[str, object]:
     if len(validation_x_rows) < 1:
         raise SystemExit("Not enough matched rows to evaluate validation set (need at least 1 row).")
 
-    model, search_summary = fit_random_forest(
+    model = fit_random_forest(
         training_x_rows,
         training_y_values,
-        random_search_iterations=random_search_iterations,
     )
     predictions = model.predict(validation_x_rows)
 
@@ -453,12 +361,12 @@ def evaluate_against_validation_set(
         "max_error_max": max(max_errors),
         "mape_mean": mape_mean,
     }
-    if search_summary is not None:
-        report["random_search"] = search_summary
     return report
 
 
 def main() -> None:
+
+    # ==== INPUTS ====
     args = parse_args()
     metrics_path = DEFAULT_METRICS_DIR / f"{args.timestamp}_metrics.csv"
     if not metrics_path.exists():
@@ -475,7 +383,11 @@ def main() -> None:
         raise SystemExit(
             "Missing required columns in metrics CSV: " + ", ".join(sorted(missing_columns))
         )
+    # ==== END INPUTS ====
 
+
+
+    # ==== DATA PARSING ====
     x_rows, target_values, skipped_capacity_rows, skipped_missing_rows = build_dataset(
         rows,
         args.include_capacity_limited,
@@ -485,7 +397,11 @@ def main() -> None:
         raise SystemExit(
             "Not enough usable rows to train/evaluate random forest models after filtering."
         )
+    # ==== END DATA PARSING ====
 
+
+
+    # ==== VALIDATION DATA INPUT & PARSING ====
     validation_rows: List[Dict[str, str]] = []
     validation_x_rows: List[List[float]] = []
     validation_target_values: Dict[str, List[float]] = {target: [] for target in TARGET_COLUMNS}
@@ -516,7 +432,11 @@ def main() -> None:
             validation_skipped_capacity_rows,
             validation_skipped_missing_rows,
         ) = build_dataset(validation_rows, args.include_capacity_limited)
+    # ==== END VALIDATION DATA INPUT & PARSING ====
 
+
+
+    # ==== MODEL FITTING & VALIDATION ====
     target_reports: Dict[str, Dict[str, float]] = {}
     for target in TARGET_COLUMNS:
         if args.validate_against:
@@ -525,22 +445,23 @@ def main() -> None:
                 target_values[target],
                 validation_x_rows,
                 validation_target_values[target],
-                random_search_iterations=args.random_search_iterations,
             )
         else:
             target_reports[target] = evaluate_target(
                 x_rows,
                 target_values[target],
-                random_search_iterations=args.random_search_iterations,
             )
+    # ==== END MODEL FITTING & VALIDATION ====
 
+
+
+    # ==== REPORTING ====
     print(f"Metrics file: {metrics_path}")
     if args.validate_against:
         print(f"Validation metrics file: {args.validate_against}")
     print(f"Include capacity-limited rows: {args.include_capacity_limited}")
     print(f"Feature columns: {', '.join(FEATURE_COLUMNS)}")
     print(f"Target columns: {', '.join(TARGET_COLUMNS)}")
-    print(f"Random search iterations: {args.random_search_iterations or 0}")
     print(f"Total rows: {len(rows)}")
     print(f"Used rows: {len(x_rows)}")
     print(f"Skipped capacity-limited rows: {skipped_capacity_rows}")
@@ -573,18 +494,7 @@ def main() -> None:
                 f"MaxError max={report['max_error_max']:.6f}, "
                 f"folds={int(report['folds'])}"
             )
-        random_search_report = report.get("random_search")
-        if random_search_report:
-            best_result = random_search_report["best"]
-            worst_result = random_search_report["worst"]
-            print(
-                f"    best sampled MAE={best_result['mae']:.6f}, "
-                f"config={json.dumps(best_result['config'], sort_keys=True)}"
-            )
-            print(
-                f"    worst sampled MAE={worst_result['mae']:.6f}, "
-                f"config={json.dumps(worst_result['config'], sort_keys=True)}"
-            )
+    # ==== END REPORTING ====
 
 
 if __name__ == "__main__":

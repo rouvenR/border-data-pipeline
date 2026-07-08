@@ -5,7 +5,9 @@ This project is part of the broader BORDER extension project. Refer to the [Orch
 This project contains python scripts to prepare and postprocess experiments with the extended BORDER framework.
 
 ## Before experiments
-`categorial_latin_hypercube_sampling.py`: Samples configurations with a wide spread for randomised experiments.
+
+
+### `categorial_latin_hypercube_sampling.py`: Samples configurations with a wide spread for randomised experiments.
 
 ```bash
 python3 categorial_latin_hypercube_sampling.py --samples 50 --clients_qos0 "50,100,150" --throughput_qos0 "100,4375,8750,13125,17500" --size_qos0 "100,250,500,750,1000" --clients_qos1 "50,100,150" --throughput_qos1 "100,4375,8750,13125,17500" --size_qos1 "100,250,500,750,1000" --clients_qos2 "50,100,150" --throughput_qos2 "100,1250,2500,3750,5000" --size_qos2 "100,250,500,750,1000" --cpu "2,4,8,16"
@@ -25,6 +27,21 @@ Parameters:
 - `--cpu` (required): Comma-separated category values for CPU core allocation.
 - `--seed` (optional): Random seed for reproducible sampling.
 - `--output` (optional): Output CSV path. If omitted, samples are printed to stdout.
+
+### `calculate_messages.py`
+This script allows the calculation of the "delay_qosX" and "messages_qosX" parameters based on a desired throughput and number of clients. This makes the targeted configuration of experiments, for example for the additive model, easier. It also outputs the number of messages to ensure an experiment duration of five minutes.
+
+``bash
+python3 ./border-data-pipeline/calculate_messages.py --throughput 100 --clients 100
+python3 ./border-data-pipeline/calculate_messages.py --throughput 1000 --clients 100
+python3 ./border-data-pipeline/calculate_messages.py --throughput 10000 --clients 100
+python3 ./border-data-pipeline/calculate_messages.py --throughput 20000 --clients 100
+python3 ./border-data-pipeline/calculate_messages.py --throughput 30000 --clients 100
+python3 ./border-data-pipeline/calculate_messages.py --throughput 40000 --clients 100
+python3 ./border-data-pipeline/calculate_messages.py --throughput 50000 --clients 100
+python3 ./border-data-pipeline/calculate_messages.py --throughput 60000 --clients 100
+python3 ./border-data-pipeline/calculate_messages.py --throughput 70000 --clients 100
+```
 
 ## After experiments
 `combine_split_subscriber_files.py`: Experiments create hundreds of MQTT trace files. This script combines them into one file for further processing.
